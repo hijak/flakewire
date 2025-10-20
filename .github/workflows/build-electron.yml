@@ -28,6 +28,7 @@ jobs:
     - name: Install dependencies
       run: |
         npm ci
+        cd client && npm ci
 
     - name: Build client
       run: |
@@ -61,6 +62,7 @@ jobs:
     - name: Install dependencies
       run: |
         npm ci
+        cd client && npm ci
 
     - name: Build and package
       run: |
