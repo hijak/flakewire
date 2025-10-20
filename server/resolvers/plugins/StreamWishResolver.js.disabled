@@ -1,0 +1,163 @@
+const GenericResolver = require('../GenericResolver');
+
+class StreamWishResolver extends GenericResolver {
+    constructor() {
+        super('StreamWish', {
+            domains: [
+                'streamwish.com',
+                'streamwish.to',
+                'streamwish.sbs',
+                'streamwish.pro',
+                'streamwish.vip',
+                'streamwish.site',
+                'awish.pro',
+                'flaswish.com',
+                'obeywish.com',
+                'streamwish.net',
+                'dwish.net',
+                'streamws.pro',
+                'sfastwish.com',
+                'gojask.com',
+                'gowish.pro'
+            ],
+            pattern: /(?::\/\/|\.)(?:(?:stream|flas|obey|go|d|sfast|awe)wish\.(?:com|to|sbs|pro|vip|site|net))\/(?:e\/|f\/|d\/)?([0-9a-zA-Z$:/.]+)/,
+            priority: 100,
+            headers: {
+                'Referer': 'https://streamwish.com/',
+                'Origin': 'https://streamwish.com'
+            },
+            genericPatterns: false,
+            patterns: [
+                // Pattern for extracting sources from JWPlayer setup
+                /sources\s*:\s*\[\s*\{[^}]*["']?file\s*["']?\s*[:=]\s*["'](?P<url>[^"']+)[^}]*\}/gi,
+                // Pattern for direct video URLs in script
+                /["']?(?:file|src|url)\s*["']?\s*[:=]\s*["'](?P<url>https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)["']/gi,
+                // Pattern for data-setup attribute
+                /data-setup\s*=\s*["']([^"']*["'])/gi,
+                // Pattern for video sources in JSON
+                /["']?video["']?\s*[:=]\s*["'](?P<url>https?:\/\/[^"']+)["']/gi
+            ]
+        });
+    }
+
+    getUrl(host, mediaId) {
+        // StreamWish supports different URL formats
+        const cleanId = mediaId.replace(/^[:/]/, '').split('?')[0];
+        return `https://${host}/e/${cleanId}`;
+    }
+
+    async getMediaUrl(host, mediaId, options = {}) {
+        try {
+            const url = this.getUrl(host, mediaId);
+            const html = await this.makeRequest(url);
+
+            // Extract sources using configured patterns
+            const sources = await this.sourceExtractor.scrapeSources(html, {
+                patterns: this.patterns,
+                genericPatterns: false,
+                blacklist: ['.mpd', '.smil'],
+                referer: url
+            });
+
+            if (sources.length === 0) {
+                // Try alternative extraction method
+                return await this.extractFromAlternativeMethod(html, url);
+            }
+
+            // Return the highest quality source
+            const bestSource = this.selectBestSource(sources);
+            return this.appendHeaders(bestSource.url, bestSource.headers);
+
+        } catch (error) {
+            console.error(`StreamWish resolution failed:`, error.message);
+            throw error;
+        }
+    }
+
+    async extractFromAlternativeMethod(html, referer) {
+        try {
+            // Look for data-setup JSON
+            const setupMatch = html.match(/data-setup\s*=\s*["']([^"']*["'])/i);
+            if (setupMatch) {
+                try {
+                    const setupData = JSON.parse(this.decodeHtmlEntities(setupMatch[1]));
+                    if (setupData.sources) {
+                        const sources = Array.isArray(setupData.sources) ?
+                            setupData.sources : [setupData.sources];
+
+                        for (const source of sources) {
+                            if (source.file || source.src) {
+                                const url = source.file || source.src;
+                                return this.appendHeaders(url, { Referer: referer });
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to parse setup data:', error.message);
+                }
+            }
+
+            // Look for video player script
+            const playerMatch = html.match(/jwplayer\s*\([^)]*\)\.setup\s*\([^)]*\)/i);
+            if (playerMatch) {
+                // Extract sources from jwplayer setup
+                const setupString = playerMatch[0];
+                const sourceMatch = setupString.match(/["']?file["']?\s*[:=]\s*["']([^"']+)["']/i);
+                if (sourceMatch) {
+                    return this.appendHeaders(sourceMatch[1], { Referer: referer });
+                }
+            }
+
+            // Look for direct video link in script
+            const videoMatch = html.match(/["']?(?:file|src|url)\s*["']?\s*[:=]\s*["'](https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)["']/i);
+            if (videoMatch) {
+                return this.appendHeaders(videoMatch[1], { Referer: referer });
+            }
+
+            throw new Error('No video source found in alternative extraction');
+
+        } catch (error) {
+            console.error('Alternative extraction failed:', error.message);
+            throw error;
+        }
+    }
+
+    getHostAndId(url) {
+        const match = url.match(this.pattern);
+        if (match) {
+            return {
+                host: match[1],
+                mediaId: match[2]
+            };
+        }
+
+        // Try alternative parsing
+        try {
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname;
+            const pathname = urlObj.pathname;
+
+            // Extract media ID from path
+            const pathMatch = pathname.match(/\/(?:e|f|d)\/(.+)/i);
+            if (pathMatch) {
+                return {
+                    host: hostname,
+                    mediaId: pathMatch[1]
+                };
+            }
+
+            // Fallback to full path
+            return {
+                host: hostname,
+                mediaId: pathname.replace(/^\//, '')
+            };
+        } catch (error) {
+            return {
+                host: null,
+                mediaId: null
+            };
+        }
+    }
+}
+
+module.exports = StreamWishResolver;

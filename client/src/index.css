@@ -1,0 +1,166 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Flake Wire Design System - Deep Space Black Theme */
+    
+    /* Base colors - Deep space black */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 96%;
+
+    /* Card with glassmorphism support */
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 96%;
+
+    /* Popover/Dropdown */
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 96%;
+
+    /* Primary - Electric Blue */
+    --primary: 194 100% 56%;
+    --primary-foreground: 0 0% 4%;
+    --primary-glow: 194 100% 66%;
+
+    /* Secondary - Technical Gray */
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 96%;
+
+    /* Muted - Sleek grays */
+    --muted: 0 0% 16%;
+    --muted-foreground: 0 0% 65%;
+
+    /* Accent - Lighter technical blue */
+    --accent: 0 0% 20%;
+    --accent-foreground: 194 100% 56%;
+
+    /* Status colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 96%;
+    
+    --success: 140 78% 46%;
+    --success-foreground: 0 0% 96%;
+    
+    --warning: 45 100% 51%;
+    --warning-foreground: 0 0% 4%;
+
+    /* Borders and inputs */
+    --border: 0 0% 20%;
+    --input: 0 0% 16%;
+    --ring: 194 100% 56%;
+
+    /* Radius */
+    --radius: 0.5rem;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(194 100% 56%), hsl(194 100% 66%));
+    --gradient-hero: linear-gradient(180deg, transparent 40%, hsl(0 0% 4%) 90%);
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 7% / 0.8), hsl(0 0% 10% / 0.6));
+    
+    /* Glassmorphism */
+    --glass-bg: hsl(0 0% 12% / 0.4);
+    --glass-border: hsl(0 0% 100% / 0.1);
+    
+    /* Shadows */
+    --shadow-glow: 0 0 40px hsl(194 100% 56% / 0.3);
+    --shadow-card: 0 10px 30px hsl(0 0% 0% / 0.5);
+    --shadow-elegant: 0 4px 20px hsl(0 0% 0% / 0.3);
+
+    /* Transitions */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+  
+  /* Smooth scrolling */
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer utilities {
+  /* Glassmorphism effect */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+  }
+  
+  /* Gradient backgrounds */
+  .gradient-primary {
+    background: var(--gradient-primary);
+  }
+  
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+  
+  /* Glow effects */
+  .glow {
+    box-shadow: var(--shadow-glow);
+  }
+  
+  /* Smooth transitions */
+  .transition-smooth {
+    transition: var(--transition-smooth);
+  }
+  
+  /* Hover scale */
+  .hover-scale {
+    @apply transition-transform duration-300 hover:scale-105;
+  }
+  
+  /* Card hover effect */
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-[var(--shadow-card)] hover:-translate-y-1;
+  }
+
+  /* Electron-specific fixes */
+  .electron-text-fix {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+
+  /* Hero text specifically for Electron */
+  .hero-title {
+    @apply electron-text-fix;
+    text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+    position: relative;
+    z-index: 10;
+  }
+
+  .hero-description {
+    @apply electron-text-fix;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.6);
+    position: relative;
+    z-index: 10;
+  }
+
+  /* Fix for Electron rendering issues */
+  @supports (-webkit-app-region: drag) {
+    .hero-title,
+    .hero-description {
+      will-change: transform;
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+    }
+  }
+}

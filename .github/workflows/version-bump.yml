@@ -1,0 +1,73 @@
+name: Version Management
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_type:
+        description: 'Type of version bump'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+
+jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Configure Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Bump version
+      run: |
+        # Update package.json version
+        if [ "${{ github.event.inputs.version_type }}" = "major" ]; then
+          npm version major --no-git-tag-version
+        elif [ "${{ github.event.inputs.version_type }}" = "minor" ]; then
+          npm version minor --no-git-tag-version
+        else
+          npm version patch --no-git-tag-version
+
+        # Get new version
+        NEW_VERSION=$(node -p "console.log(require('./package.json').version)")
+
+    - name: Update changelog
+      run: |
+        # Generate changelog entry
+        echo "## v$NEW_VERSION" > CHANGELOG.md
+        echo "" >> CHANGELOG.md
+        echo "### Changes" >> CHANGELOG.md
+        echo "- Version bumped to $NEW_VERSION (${{ github.event.inputs.version_type }})" >> CHANGELOG.md
+
+    - name: Commit changes
+      run: |
+        git add package.json CHANGELOG.md
+        git commit -m "chore: bump version to v$NEW_VERSION"
+
+    - name: Push changes
+      run: |
+        git push origin main
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: "v$NEW_VERSION"
+        name: "v$NEW_VERSION"
+        body_path: CHANGELOG.md
+        draft: false
+        prerelease: false
+        token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,53 @@
+# Use Node.js LTS version for development
+FROM node:20-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies needed for Playwright
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    freetype-dev \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    xvfb
+
+# Copy package files
+COPY package*.json ./
+
+# Install all dependencies including dev dependencies
+RUN npm install
+
+# Install Playwright browsers
+RUN npx playwright install chromium
+
+# Copy server code
+COPY . .
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Change ownership of the app directory to the nodejs user
+RUN chown -R nodejs:nodejs /app
+
+# Fix Playwright browser permissions for nodejs user
+USER root
+RUN mkdir -p /home/nodejs/.cache && \
+    cp -r /root/.cache/ms-playwright /home/nodejs/.cache/ && \
+    chown -R nodejs:nodejs /home/nodejs/.cache
+
+# Switch to non-root user
+USER nodejs
+
+# Expose ports
+EXPOSE 3001 9229
+
+# Prefer system Chromium in dev for Alpine
+ENV PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium
+
+# Start the server with nodemon for hot reloading
+CMD ["npm", "run", "dev"]

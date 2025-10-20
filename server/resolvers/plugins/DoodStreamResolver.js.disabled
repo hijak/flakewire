@@ -1,0 +1,179 @@
+const GenericResolver = require('../GenericResolver');
+
+class DoodStreamResolver extends GenericResolver {
+    constructor() {
+        super('DoodStream', {
+            domains: [
+                'doodstream.co',
+                'doodstream.com',
+                'doodstream.is',
+                'doodstream.to',
+                'doodstream.sx',
+                'doodstream.wf',
+                'doodstream.sh',
+                'dood.ws',
+                'dood.watch',
+                'doodstream.io',
+                'doodstream.lol',
+                'doodstream.pro'
+            ],
+            pattern: /(?::\/\/|\.)(?:(?:dood(?:stream)?|dood)\.(?:co|com|is|to|sx|wf|sh|ws|watch|io|lol|pro))\/(?:e|d|embed)\/([a-zA-Z0-9]+)/,
+            priority: 100,
+            headers: {
+                'Referer': 'https://doodstream.co/',
+                'Origin': 'https://doodstream.co'
+            },
+            genericPatterns: false,
+            patterns: [
+                // Pattern for DoodStream specific source extraction
+                /["']?file\s*["']?\s*[:=]\s*["'](?P<url>https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)["']/gi,
+                // Pattern for DoodStream's custom format
+                /\$\.get\s*\(\s*["']([^"']+)["']/gi,
+                // Pattern for direct video URL
+                /["']?(?:video|src|url)\s*["']?\s*[:=]\s*["'](?P<url>https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)["']/gi,
+                // Pattern for data attribute
+                /data-video\s*=\s*["'](?P<url>[^"']+)["']/gi
+            ]
+        });
+    }
+
+    getUrl(host, mediaId) {
+        // DoodStream supports different URL formats
+        const cleanId = mediaId.split('?')[0];
+        return `https://${host}/e/${cleanId}`;
+    }
+
+    async getMediaUrl(host, mediaId, options = {}) {
+        try {
+            const url = this.getUrl(host, mediaId);
+            const html = await this.makeRequest(url);
+
+            // Extract sources using configured patterns
+            const sources = await this.sourceExtractor.scrapeSources(html, {
+                patterns: this.patterns,
+                genericPatterns: false,
+                blacklist: ['.mpd', '.smil'],
+                referer: url
+            });
+
+            if (sources.length === 0) {
+                // Try DoodStream-specific extraction method
+                return await this.extractFromDoodMethod(html, url);
+            }
+
+            // Return the highest quality source
+            const bestSource = this.selectBestSource(sources);
+            return this.appendHeaders(bestSource.url, bestSource.headers);
+
+        } catch (error) {
+            console.error(`DoodStream resolution failed:`, error.message);
+            throw error;
+        }
+    }
+
+    async extractFromDoodMethod(html, referer) {
+        try {
+            // DoodStream often uses a specific method to generate video URLs
+
+            // Method 1: Look for the video URL in a specific script pattern
+            const scriptMatch = html.match(/["']?file["']?\s*[:=]\s*["'](https?:\/\/[^"']+\.(?:mp4|m3u8))["']/i);
+            if (scriptMatch) {
+                return this.appendHeaders(scriptMatch[1], { Referer: referer });
+            }
+
+            // Method 2: Look for DoodStream's unique pattern
+            const doodMatch = html.match(/\$\.get\s*\(\s*["']([^"']+)["']/i);
+            if (doodMatch) {
+                // This might be a relative URL that needs to be constructed
+                let videoUrl = doodMatch[1];
+                if (!videoUrl.startsWith('http')) {
+                    // Construct full URL
+                    const baseUrl = new URL(referer);
+                    videoUrl = `${baseUrl.protocol}//${baseUrl.host}${videoUrl}`;
+                }
+                return this.appendHeaders(videoUrl, { Referer: referer });
+            }
+
+            // Method 3: Look for video source in eval or similar
+            const evalMatch = html.match(/eval\s*\(\s*function\s*\([^)]*\)\s*\{[^}]*return\s*["']([^"']+)["']/i);
+            if (evalMatch) {
+                let videoUrl = evalMatch[1];
+                if (!videoUrl.startsWith('http')) {
+                    const baseUrl = new URL(referer);
+                    videoUrl = `${baseUrl.protocol}//${baseUrl.host}${videoUrl}`;
+                }
+                return this.appendHeaders(videoUrl, { Referer: referer });
+            }
+
+            // Method 4: Look for base64 encoded content
+            const base64Match = html.match(/["']?(?:file|video|src)["']?\s*[:=]\s*["']([A-Za-z0-9+/=]{20,})["']/i);
+            if (base64Match) {
+                try {
+                    const decodedContent = this.base64Decode(base64Match[1]);
+                    const urlMatch = decodedContent.match(/https?:\/\/[^\s"']+\.(?:mp4|m3u8)/i);
+                    if (urlMatch) {
+                        return this.appendHeaders(urlMatch[0], { Referer: referer });
+                    }
+                } catch (error) {
+                    console.error('Failed to decode base64 content:', error.message);
+                }
+            }
+
+            // Method 5: Look for token-based URLs
+            const tokenMatch = html.match(/["']?(?:file|video)\s*["']?\s*[:=]\s*["']([^"']*\?token=[^"']+)["']/i);
+            if (tokenMatch) {
+                return this.appendHeaders(tokenMatch[1], { Referer: referer });
+            }
+
+            // Method 6: Look for any URL that ends with video extension
+            const videoExtensionMatch = html.match(/https?:\/\/[^\s"']+\.(?:mp4|m3u8|avi|mkv|mov|webm)[^\s"']*/i);
+            if (videoExtensionMatch) {
+                return this.appendHeaders(videoExtensionMatch[0], { Referer: referer });
+            }
+
+            throw new Error('No video source found using DoodStream extraction methods');
+
+        } catch (error) {
+            console.error('DoodStream extraction failed:', error.message);
+            throw error;
+        }
+    }
+
+    getHostAndId(url) {
+        const match = url.match(this.pattern);
+        if (match) {
+            return {
+                host: match[1],
+                mediaId: match[2]
+            };
+        }
+
+        // Try alternative parsing
+        try {
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname;
+            const pathname = urlObj.pathname;
+
+            // Extract media ID from path
+            const pathMatch = pathname.match(/\/(?:e|d|embed)\/([a-zA-Z0-9]+)/i);
+            if (pathMatch) {
+                return {
+                    host: hostname,
+                    mediaId: pathMatch[1]
+                };
+            }
+
+            return {
+                host: hostname,
+                mediaId: pathname.replace(/^\/(?:e|d|embed)\//, '')
+            };
+        } catch (error) {
+            return {
+                host: null,
+                mediaId: null
+            };
+        }
+    }
+}
+
+module.exports = DoodStreamResolver;

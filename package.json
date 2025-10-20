@@ -1,0 +1,125 @@
+{
+  "name": "flake-wire",
+  "version": "1.0.0",
+  "description": "A media streaming application with debrid provider integration",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "concurrently \"npm run server\" \"npm run client:dev\"",
+    "server": "nodemon server/index.js",
+    "client:dev": "cd client && npm run dev",
+    "client:build": "cd client && npm run build",
+    "build": "npm run client:build",
+    "build:all": "npm run client:build && npm run electron:build",
+    "install-all": "npm install && cd client && npm install && cd ../server && npm install && cd ..",
+    "electron:dev": "ELECTRON_TRANSCODE=true PORT=3001 electron ./electron/main.js",
+    "electron:pack": "electron-builder -mwl",
+    "electron:build": "npm run client:build && npm run electron:pack",
+    "electron:build:script": "node build-electron.js",
+    "electron:build:shell": "./build-electron.sh",
+    "electron:build:linux": "npm run client:build && npx electron-builder --linux --publish=never",
+    "electron:build:mac": "npm run client:build && npx electron-builder --mac --publish=never",
+    "electron:build:win": "npm run client:build && npx electron-builder --win --publish=never",
+    "electron:build:all": "npm run client:build && npx electron-builder --mac --win --linux --publish=never",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
+    "docker:prod": "docker compose -f docker-compose.prod.yml up -d --build",
+    "docker:clean": "docker compose down -v --remove-orphans && docker system prune -f"
+  },
+  "keywords": [
+    "media",
+    "streaming",
+    "debrid",
+    "movies",
+    "tv-shows"
+  ],
+  "author": {
+    "name": "Flake Wire Team",
+    "email": "support@flakewire.app"
+  },
+  "homepage": "https://github.com/flake-wire/flake-wire",
+  "license": "MIT",
+  "build": {
+    "appId": "com.flakewire.app",
+    "productName": "Flake Wire",
+    "directories": {
+      "output": "dist"
+    },
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**"
+    ],
+    "files": [
+      "server/**",
+      "client/dist/**",
+      "client/build/**",
+      "electron/**",
+      "assets/**",
+      "logo.png",
+      "package.json",
+      "node_modules/**"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "mac": {
+      "category": "public.app-category.video",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "assets/icon.iconset/icon_512x512.png"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ],
+      "category": "AudioVideo",
+      "maintainer": "Flake Wire Team <support@flakewire.app>",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "ffmpeg-static": "^5.2.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "bcrypt": "^6.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "playwright": "^1.56.1",
+    "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.1",
+    "electron": "^29.0.0",
+    "electron-builder": "^24.6.4"
+  }
+}

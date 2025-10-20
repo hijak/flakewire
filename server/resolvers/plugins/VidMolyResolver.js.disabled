@@ -1,0 +1,178 @@
+const GenericResolver = require('../GenericResolver');
+
+class VidMolyResolver extends GenericResolver {
+    constructor() {
+        super('VidMoly', {
+            domains: [
+                'vidmoly.me',
+                'vidmoly.to',
+                'vidmoly.net',
+                'vidmoly.site',
+                'vidmoly.fun',
+                'vidembed.cc',
+                'vidembed.io',
+                'vidembed.net',
+                'vidcloud9.com',
+                'vidstreaming.io'
+            ],
+            pattern: /(?::\/\/|\.)(?:(?:vidmol|vidembed|vidcloud|vidstreaming)\.(?:me|to|net|site|fun|cc|io|com))\/(?:embed-)?([0-9a-zA-Z]+)/,
+            priority: 100,
+            headers: {
+                'Referer': 'https://vidmoly.me/',
+                'Origin': 'https://vidmoly.me'
+            },
+            genericPatterns: false,
+            patterns: [
+                // Pattern for VidMoly specific source extraction
+                /["']?file\s*["']?\s*[:=]\s*["'](?P<url>https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)["']/gi,
+                // Pattern for sources array in VidMoly
+                /sources\s*:\s*\[\s*\{[^}]*["']?file\s*["']?\s*[:=]\s*["'](?P<url>[^"']+)[^}]*\}/gi,
+                // Pattern for video source in script
+                /video["']?\s*[:=]\s*["'](?P<url>https?:\/\/[^"']+)["']/gi,
+                // Pattern for data-source attribute
+                /data-source\s*=\s*["'](?P<url>[^"']+)["']/gi
+            ]
+        });
+    }
+
+    getUrl(host, mediaId) {
+        // VidMoly supports different URL formats
+        const cleanId = mediaId.replace(/^embed-/, '').split('?')[0];
+        return `https://${host}/embed-${cleanId}.html`;
+    }
+
+    async getMediaUrl(host, mediaId, options = {}) {
+        try {
+            const url = this.getUrl(host, mediaId);
+            const html = await this.makeRequest(url);
+
+            // Extract sources using configured patterns
+            const sources = await this.sourceExtractor.scrapeSources(html, {
+                patterns: this.patterns,
+                genericPatterns: false,
+                blacklist: ['.mpd', '.smil'],
+                referer: url
+            });
+
+            if (sources.length === 0) {
+                // Try alternative extraction method for VidMoly
+                return await this.extractFromVidMolyMethod(html, url);
+            }
+
+            // Return the highest quality source
+            const bestSource = this.selectBestSource(sources);
+            return this.appendHeaders(bestSource.url, bestSource.headers);
+
+        } catch (error) {
+            console.error(`VidMoly resolution failed:`, error.message);
+            throw error;
+        }
+    }
+
+    async extractFromVidMolyMethod(html, referer) {
+        try {
+            // VidMoly often uses a specific script format
+            // Look for the video source in their custom player
+
+            // Method 1: Look for the video URL in script tags
+            const scriptMatch = html.match(/sources\s*:\s*\[\s*\{[^}]*file\s*:\s*["']([^"']+)["'][^}]*\}/i);
+            if (scriptMatch) {
+                return this.appendHeaders(scriptMatch[1], { Referer: referer });
+            }
+
+            // Method 2: Look for video source in a specific format
+            const videoMatch = html.match(/["']?file["']?\s*[:=]\s*["'](https?:\/\/[^"']+\.(?:mp4|m3u8)[^"']*)["']/i);
+            if (videoMatch) {
+                return this.appendHeaders(videoMatch[1], { Referer: referer });
+            }
+
+            // Method 3: Look for embed video source
+            const embedMatch = html.match(/embed\s*\(\s*["']([^"']+)["']/i);
+            if (embedMatch) {
+                return this.appendHeaders(embedMatch[1], { Referer: referer });
+            }
+
+            // Method 4: Look for base64 encoded video URL
+            const base64Match = html.match(/["']?(?:file|src|url)["']?\s*[:=]\s*["']([A-Za-z0-9+/=]{20,})["']/i);
+            if (base64Match) {
+                try {
+                    const decodedUrl = this.base64Decode(base64Match[1]);
+                    if (decodedUrl.startsWith('http')) {
+                        return this.appendHeaders(decodedUrl, { Referer: referer });
+                    }
+                } catch (error) {
+                    console.error('Failed to decode base64 URL:', error.message);
+                }
+            }
+
+            // Method 5: Look for video source in eval statements
+            const evalMatch = html.match(/eval\s*\(\s*["']([^"']+)["']/i);
+            if (evalMatch) {
+                try {
+                    // This is a simplified approach - in reality you'd need a proper JS interpreter
+                    // For now, just look for URLs in the eval content
+                    const evalContent = evalMatch[1];
+                    const urlMatch = evalContent.match(/https?:\/\/[^\s"']+\.(?:mp4|m3u8)/i);
+                    if (urlMatch) {
+                        return this.appendHeaders(urlMatch[0], { Referer: referer });
+                    }
+                } catch (error) {
+                    console.error('Failed to parse eval content:', error.message);
+                }
+            }
+
+            throw new Error('No video source found using VidMoly extraction methods');
+
+        } catch (error) {
+            console.error('VidMoly extraction failed:', error.message);
+            throw error;
+        }
+    }
+
+    getHostAndId(url) {
+        const match = url.match(this.pattern);
+        if (match) {
+            return {
+                host: match[1],
+                mediaId: match[2]
+            };
+        }
+
+        // Try alternative parsing
+        try {
+            const urlObj = new URL(url);
+            const hostname = urlObj.hostname;
+            const pathname = urlObj.pathname;
+
+            // Extract media ID from embed- format
+            const embedMatch = pathname.match(/\/embed-([^.]+)/i);
+            if (embedMatch) {
+                return {
+                    host: hostname,
+                    mediaId: embedMatch[1]
+                };
+            }
+
+            // Extract media ID from path
+            const pathMatch = pathname.match(/\/([^.]+)/i);
+            if (pathMatch) {
+                return {
+                    host: hostname,
+                    mediaId: pathMatch[1]
+                };
+            }
+
+            return {
+                host: hostname,
+                mediaId: pathname.replace(/^\//, '')
+            };
+        } catch (error) {
+            return {
+                host: null,
+                mediaId: null
+            };
+        }
+    }
+}
+
+module.exports = VidMolyResolver;

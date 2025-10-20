@@ -1,0 +1,53 @@
+services:
+  # Backend Service (Development)
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile.dev
+    container_name: flake-wire-backend-dev
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+    env_file:
+      - .env
+    ports:
+      - "3001:3001"
+      - "9229:9229"  # Debug port
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+      - ./logs:/app/logs
+    networks:
+      - flake-wire-network
+    command: npm run dev
+
+  # Frontend Service (Development)
+  frontend:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.dev
+    container_name: flake-wire-frontend-dev
+    restart: unless-stopped
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001/api
+      - CHOKIDAR_USEPOLLING=true
+    ports:
+      - "3000:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+    networks:
+      - flake-wire-network
+    command: npm run dev -- --host 0.0.0.0
+
+networks:
+  flake-wire-network:
+    driver: bridge
+    name: flake-wire-dev-network
+
+volumes:
+  logs:
+    driver: local
