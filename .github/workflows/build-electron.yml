@@ -3,10 +3,10 @@ name: Build Electron App
 on:
   push:
     branches: [ main, develop ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
-  release:
-    types: [ published ]
 
 jobs:
   build:
@@ -35,7 +35,7 @@ jobs:
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get update
-        sudo apt-get install -y libasound2-dev libgtk-3-dev libgconf-2-4
+        sudo apt-get install -y libasound2-dev libgtk-3-dev libgbm-dev libnss3-dev libxss1 libxrandr2 libasound2 libpangocairo-1.0-0 libatk1.0-0 libcairo-gobject2 libgtk-3-0 libgdk-pixbuf2.0-0
 
     - name: Build client
       run: |
@@ -63,7 +63,7 @@ jobs:
 
   release:
     needs: build
-    if: always() && needs.build.result != 'cancelled'
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.result != 'cancelled' && needs.build.result != 'skipped'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
