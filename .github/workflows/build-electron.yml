@@ -13,6 +13,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+      fail-fast: false
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -39,6 +40,7 @@ jobs:
         npm run electron:build
 
     - name: Upload artifacts
+      if: always()
       uses: actions/upload-artifact@v4
       with:
         name: electron-app-${{ matrix.os }}
@@ -48,6 +50,7 @@ jobs:
 
   release:
     needs: build
+    if: always() && needs.build.result != 'cancelled'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -68,9 +71,19 @@ jobs:
       run: |
         npm run build:all
 
-    - name: Generate release assets
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: release-artifacts
+
+    - name: Prepare release assets
       run: |
         mkdir -p release
+        find release-artifacts -name "*.AppImage" -type f -exec cp {} release/ \;
+        find release-artifacts -name "*.deb" -type f -exec cp {} release/ \;
+        find release-artifacts -name "*.dmg" -type f -exec cp {} release/ \;
+        find release-artifacts -name "*.exe" -type f -exec cp {} release/ \;
+        ls -la release/
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
