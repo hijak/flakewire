@@ -23,7 +23,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
 
     - name: Install dependencies
@@ -43,17 +43,14 @@ jobs:
 
     - name: Build Electron app
       run: |
-        case "${{ matrix.os }}" in
-          ubuntu-latest)
-            npm run electron:build:linux
-            ;;
-          windows-latest)
-            npm run electron:build:win
-            ;;
-          macos-latest)
-            npm run electron:build:mac
-            ;;
-        esac
+        if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          npm run electron:build:linux
+        elif [ "${{ matrix.os }}" = "windows-latest" ]; then
+          npm run electron:build:win
+        elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+          npm run electron:build:mac
+        fi
+      shell: bash
 
     - name: Upload artifacts
       if: always()
@@ -75,7 +72,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
 
     - name: Install dependencies
