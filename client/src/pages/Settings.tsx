@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { useAuth } from '@/contexts/auth'
 
 type OAuthStatus = { configured: boolean; expired: boolean; metadata?: any }
 
@@ -44,7 +43,7 @@ const Settings = () => {
   const [fanartConfigured, setFanartConfigured] = useState<'env'|'storage'|'none'>('none')
   const [omdbKey, setOmdbKey] = useState('')
   const [fanartKey, setFanartKey] = useState('')
-  const { token } = useAuth()
+  // Single-user mode: no Authorization, server uses default scope
 
   const load = async () => {
     try {
@@ -52,15 +51,11 @@ const Settings = () => {
       setTrakt(t); setAlldebrid(a)
       // API keys status
       try {
-        const r1 = token
-          ? await fetch('/api/config/api-keys/omdb', { headers: { Authorization: `Bearer ${token}` } })
-          : await fetch('/api/public/api-keys/omdb')
+        const r1 = await fetch('/api/public/api-keys/omdb')
         if (r1.ok) { const j = await r1.json(); setOmdbConfigured(j.source==='env'?'env':'storage') } else setOmdbConfigured('none')
       } catch { setOmdbConfigured('none') }
       try {
-        const r2 = token
-          ? await fetch('/api/config/api-keys/fanarttv', { headers: { Authorization: `Bearer ${token}` } })
-          : await fetch('/api/public/api-keys/fanarttv')
+        const r2 = await fetch('/api/public/api-keys/fanarttv')
         if (r2.ok) { const j = await r2.json(); setFanartConfigured(j.source==='env'?'env':'storage') } else setFanartConfigured('none')
       } catch { setFanartConfigured('none') }
     } catch {}
@@ -70,11 +65,9 @@ const Settings = () => {
 
   const connectTrakt = async () => {
     try {
-      const d = await (async () => {
-        const r = await fetch('/api/auth/oauth/trakt/auth', { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-        if (!r.ok) throw new Error('auth init failed')
-        return r.json()
-      })()
+      const r = await fetch('/api/auth/oauth/trakt/auth')
+      if (!r.ok) throw new Error('auth init failed')
+      const d = await r.json()
       if (d?.authUrl) {
         // Open in external browser; Electron will intercept and open externally
         window.open(d.authUrl, '_blank')
@@ -95,7 +88,7 @@ const Settings = () => {
 
   const startTraktDevice = async () => {
     try {
-      const r = await fetch('/api/auth/oauth/trakt/device/start', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      const r = await fetch('/api/auth/oauth/trakt/device/start', { method: 'POST' })
       const data = await r.json()
       if (!r.ok) throw new Error(data.error || 'Failed to start device auth')
       setTraktDevice(data)
@@ -110,9 +103,7 @@ const Settings = () => {
       const iv = setInterval(async () => {
         attempts++
         try {
-          const headers:any = { 'Content-Type':'application/json' }
-          if (token) headers.Authorization = `Bearer ${token}`
-          const p = await fetch('/api/auth/oauth/trakt/device/poll', { method:'POST', headers, body: JSON.stringify({ device_code: data.device_code }) })
+          const p = await fetch('/api/auth/oauth/trakt/device/poll', { method:'POST', headers: { 'Content-Type':'application/json' }, body: JSON.stringify({ device_code: data.device_code }) })
           const j = await p.json()
           if (j && j.success) {
             clearInterval(iv)
@@ -170,12 +161,8 @@ const Settings = () => {
   const saveApiKey = async (provider: 'omdb'|'fanarttv', key: string) => {
     try {
       const body = JSON.stringify({ apiKey: key })
-      if (token) {
-        const r = await fetch(`/api/config/api-keys/${provider}`, { method: 'POST', headers: { 'Content-Type':'application/json', Authorization: `Bearer ${token}` }, body })
-        if (r.ok) { await load(); return }
-      }
-      const r2 = await fetch(`/api/public/api-keys/${provider}`, { method:'POST', headers: { 'Content-Type':'application/json' }, body })
-      if (r2.ok) await load()
+      const r = await fetch(`/api/public/api-keys/${provider}`, { method:'POST', headers: { 'Content-Type':'application/json' }, body })
+      if (r.ok) await load()
     } catch {}
   }
 

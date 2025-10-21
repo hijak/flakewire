@@ -19,10 +19,11 @@ const PosterService = require('./services/imdbService');
 const MKVTranscoder = require('./services/mkvTranscoder');
 
 // Import routes
-const { router: authRoutes, setDebridManager: setDebridManagerForAuth } = require('./routes/auth');
+const { router: authRoutes, setDebridManager: setDebridManagerForAuth, setSecureStorage: setSecureStorageForAuth } = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const searchRoutes = require('./routes/search');
 const { router: configRoutes, setDebridManager } = require('./routes/config');
+const calendarMod = require('./routes/calendar');
 
 // Initialize services
 const secureStorage = new SecureStorage();
@@ -54,8 +55,14 @@ async function getUserOmdbApiKey(userId = 'default') {
 // Inject debridManager into config routes
 setDebridManager(debridManager);
 setDebridManagerForAuth(debridManager);
+// Inject shared secureStorage into routes so all writes go through one instance
+try { setSecureStorageForAuth(secureStorage); } catch {}
+try { if (typeof calendarMod.setSecureStorage === 'function') calendarMod.setSecureStorage(secureStorage); } catch {}
 
 const app = express();
+let traktReady = false;
+let traktReadyError = null;
+let traktReadyPromise = null;
 const DEFAULT_PORT = parseInt(process.env.PORT || '3001', 10) || 3001;
 const DEFAULT_HOST = process.env.HOST || process.env.BIND_HOST || '127.0.0.1';
 
@@ -82,6 +89,48 @@ const authenticateToken = (req, res, next) => {
     next();
   });
 };
+
+// Ensure Trakt token is ready (single-user): try default scope, refresh if expired
+async function ensureTraktReady() {
+  try {
+    traktReadyError = null;
+    // Prefer default scope
+    const td = await secureStorage.getOAuthToken('default', 'trakt');
+    if (td && td.token) {
+      const token = td.token;
+      const expired = token.expires_at ? (new Date(token.expires_at) <= new Date()) : false;
+      if (expired && token.refresh_token) {
+        try {
+          const newTok = await oauthService.refreshTraktToken(token.refresh_token);
+          await secureStorage.storeOAuthToken('default', 'trakt', newTok);
+        } catch (e) {
+          console.warn('[Trakt] Refresh failed at startup:', e?.message || e);
+        }
+      }
+      traktReady = true;
+      return true;
+    }
+    // If provider marked configured but token not readable yet, wait a bit and retry once
+    if (secureStorage.isProviderConfigured('default', 'trakt', 'oauth')) {
+      await new Promise(r => setTimeout(r, 300));
+      const td2 = await secureStorage.getOAuthToken('default', 'trakt');
+      traktReady = Boolean(td2 && td2.token);
+      return traktReady;
+    }
+    traktReady = true; // no trakt configured; don't block UI
+    return true;
+  } catch (e) {
+    traktReadyError = e?.message || String(e);
+    traktReady = true; // don't block UI due to error
+    return true;
+  }
+}
+
+function startTraktInit() {
+  traktReadyPromise = ensureTraktReady().catch(() => true);
+}
+
+startTraktInit();
 
 // Serve static files from built frontend (prefer new Vite dist, fall back to CRA build)
 function findStaticRoot() {
@@ -123,9 +172,18 @@ if (staticRoot) {
 }
 
 // SPA fallback: serve index.html for non-API routes
-app.get('*', (req, res, next) => {
+app.get('*', async (req, res, next) => {
   if (req.path.startsWith('/api/')) return next();
   if (req.path === '/logo.png') return next();
+  try {
+    // Wait briefly for Trakt ready on cold start
+    if (!traktReady && traktReadyPromise) {
+      await Promise.race([
+        traktReadyPromise,
+        new Promise(r => setTimeout(r, 800))
+      ]);
+    }
+  } catch (_) {}
   if (!staticRoot) {
     return res.status(404).send('Frontend not found. Build the client or check packaging.');
   }
@@ -155,6 +213,10 @@ app.get('/api/health', async (req, res) => {
     debridProviders: debridManager.getAvailableProviders(),
     scrapers: scraperManager.getAvailableScrapers(),
     scraperStats: newScraperManager.getStats(),
+    tokens: {
+      traktReady,
+      traktReadyError
+    },
     features: {
       oauth: true,
       secureStorage: true,
@@ -162,6 +224,25 @@ app.get('/api/health', async (req, res) => {
       enhancedSearch: true
     }
   });
+});
+
+// Debug: report trakt storage status (no secrets shown)
+app.get('/api/debug/trakt', async (req, res) => {
+  try {
+    const td = await secureStorage.getOAuthToken('default', 'trakt');
+    const configured = secureStorage.isProviderConfigured('default', 'trakt', 'oauth');
+    const expired = td?.token?.expires_at ? (new Date(td.token.expires_at) <= new Date()) : null;
+    res.json({
+      configured,
+      hasToken: Boolean(td && td.token),
+      expired,
+      metadata: td?.metadata || null,
+      storageFile: secureStorage.storageFile || null,
+      dataDir: secureStorage.dataDir || null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'debug_failed', message: e?.message || String(e) });
+  }
 });
 
 // Video format compatibility endpoint
@@ -330,6 +411,9 @@ app.use('/api/users', userRoutes);
 
 // Mount search routes
 app.use('/api/search', searchRoutes);
+
+// Mount calendar routes
+app.use('/api/calendar', calendarMod.router || calendarMod);
 
 // Serve app logo from project root if present (used by UI spinner/header)
 app.get('/logo.png', (req, res) => {
@@ -1819,6 +1903,35 @@ function getOptionalUserId(req) {
   }
 }
 
+// Helper: choose Trakt scope and ensure token is fresh
+async function getTraktScopeAndToken(userId) {
+  try {
+    // Prefer default scope in single-user mode
+    const tryScopes = ['default', userId].filter(Boolean);
+    for (const scope of tryScopes) {
+      const td = await secureStorage.getOAuthToken(scope, 'trakt');
+      if (td && td.token) {
+        let token = td.token;
+        let expired = false;
+        try { expired = token.expires_at ? (new Date(token.expires_at) <= new Date()) : false; } catch { expired = false; }
+        if (expired && token.refresh_token) {
+          try {
+            const newTok = await oauthService.refreshTraktToken(token.refresh_token);
+            await secureStorage.storeOAuthToken(scope, 'trakt', newTok);
+            token = newTok;
+          } catch (e) {
+            console.warn('Trakt token refresh failed for scope', scope, e?.message || e);
+          }
+        }
+        return { scope, token };
+      }
+    }
+  } catch (e) {
+    console.warn('getTraktScopeAndToken error:', e?.message || e);
+  }
+  return { scope: null, token: null };
+}
+
 // Unified home feed: if user has Trakt OAuth, use recommendations/watchlist; else fallback to trending
 app.get('/api/home', async (req, res) => {
   try {
@@ -1883,10 +1996,8 @@ app.get('/api/movies/feed', async (req, res) => {
   try {
     const userId = getOptionalUserId(req);
     const refresh = String(req.query.refresh || 'false') === 'true';
-    // Determine scope: user or default
-    const userHas = secureStorage.isProviderConfigured(userId, 'trakt', 'oauth') && !secureStorage.isTokenExpired(userId, 'trakt');
-    const defHas = secureStorage.isProviderConfigured('default', 'trakt', 'oauth') && !secureStorage.isTokenExpired('default', 'trakt');
-    const scope = userHas ? userId : (defHas ? 'default' : null);
+    // Determine scope via token presence (default-first)
+    const { scope, token } = await getTraktScopeAndToken(userId);
     if (!scope) {
       // Fallback to popular movies if Trakt not connected
       try {
@@ -1906,7 +2017,7 @@ app.get('/api/movies/feed', async (req, res) => {
       const cached = traktFeedCache.movies.get(scope);
       if (cached && (Date.now() - cached.ts) < TRAKT_CACHE_TTL) return res.json(cached.data);
     }
-    const tokenData = await secureStorage.getOAuthToken(scope, 'trakt');
+    const tokenData = token ? { token } : await secureStorage.getOAuthToken(scope, 'trakt');
     const [collectionRaw, watchlistRaw, recentRaw, listsRaw] = await Promise.all([
       oauthService.getTraktCollectionMovies(tokenData.token.access_token).catch(() => []),
       oauthService.getTraktWatchlistMovies(tokenData.token.access_token).catch(() => []),
@@ -1962,9 +2073,7 @@ app.get('/api/tv/feed', async (req, res) => {
   try {
     const userId = getOptionalUserId(req);
     const refresh = String(req.query.refresh || 'false') === 'true';
-    const userHas = secureStorage.isProviderConfigured(userId, 'trakt', 'oauth') && !secureStorage.isTokenExpired(userId, 'trakt');
-    const defHas = secureStorage.isProviderConfigured('default', 'trakt', 'oauth') && !secureStorage.isTokenExpired('default', 'trakt');
-    const scope = userHas ? userId : (defHas ? 'default' : null);
+    const { scope, token } = await getTraktScopeAndToken(userId);
     if (!scope) {
       // Fallback to popular shows if Trakt not connected
       try {
@@ -1984,7 +2093,7 @@ app.get('/api/tv/feed', async (req, res) => {
       const cached = traktFeedCache.tv.get(scope);
       if (cached && (Date.now() - cached.ts) < TRAKT_CACHE_TTL) return res.json(cached.data);
     }
-    const tokenData = await secureStorage.getOAuthToken(scope, 'trakt');
+    const tokenData = token ? { token } : await secureStorage.getOAuthToken(scope, 'trakt');
     const [collectionRaw, watchlistRaw, recentRaw, listsRaw] = await Promise.all([
       oauthService.getTraktCollectionShows(tokenData.token.access_token).catch(() => []),
       oauthService.getTraktWatchlistShows(tokenData.token.access_token).catch(() => []),
@@ -2025,7 +2134,20 @@ app.get('/api/tv/feed', async (req, res) => {
       posterService.enhanceTVShowBatch(recent),
       Promise.all(lists.map(async l => ({ name: l.name, id: l.id, items: await posterService.enhanceTVShowBatch(l.items) })))
     ]);
-    const data = { collection: enhCol, watchlist: enhWl, recent: enhRecent, lists: enhListBatches, timestamp: new Date().toISOString() };
+    // Fallback: if nothing in any section, show popular TV to avoid empty UI
+    let data = { collection: enhCol, watchlist: enhWl, recent: enhRecent, lists: enhListBatches, timestamp: new Date().toISOString() };
+    const totalCount = enhCol.length + enhWl.length + enhRecent.length + (Array.isArray(enhListBatches) ? enhListBatches.reduce((a,b)=> a + (b.items?.length||0), 0) : 0);
+    if (totalCount === 0) {
+      try {
+        const popShows = await oauthService.getPopularShows(20).catch(() => []);
+        const shows = Array.isArray(popShows) ? popShows.map(item => {
+          const s = item?.show || item;
+          return { id: s?.ids?.imdb || s?.ids?.slug || s?.ids?.trakt, imdbId: s?.ids?.imdb || null, tvdbId: s?.ids?.tvdb || null, title: s?.title, year: s?.year, type: 'tv' };
+        }) : [];
+        const enhanced = await posterService.enhanceTVShowBatch(shows);
+        data = { collection: enhanced, watchlist: [], recent: [], lists: [], source: 'fallback_popular', timestamp: new Date().toISOString() };
+      } catch (_) {}
+    }
     traktFeedCache.tv.set(scope, { data, ts: Date.now() });
     res.json(data);
   } catch (error) {

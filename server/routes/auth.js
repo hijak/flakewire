@@ -5,7 +5,8 @@ const OAuthService = require('../services/oauthService');
 const SecureStorage = require('../services/secureStorage');
 
 const oauthService = new OAuthService();
-const secureStorage = new SecureStorage();
+let secureStorage = new SecureStorage();
+function setSecureStorage(storage) { secureStorage = storage; }
 let debridManager = null;
 
 // Allow server to inject debridManager for refreshing providers
@@ -112,6 +113,8 @@ router.post('/oauth/:provider/callback', async (req, res) => {
 
     // Store encrypted tokens for the user
     await secureStorage.storeOAuthToken(userId, provider, tokenData);
+    // Single-user mode: also mirror tokens to 'default' scope
+    try { await secureStorage.storeOAuthToken('default', provider, tokenData); } catch (e) { console.warn('Default scope mirror failed:', e?.message || e) }
 
     // Get user profile if available
     let userProfile = null;
@@ -211,6 +214,8 @@ router.post('/oauth/trakt/device/poll', async (req, res) => {
     // Store token for the current or default user
     const userId = getUserId(req);
     await secureStorage.storeOAuthToken(userId, 'trakt', result);
+    // Single-user mode: mirror to default scope
+    try { await secureStorage.storeOAuthToken('default', 'trakt', result) } catch (e) { console.warn('Mirror trakt token to default failed:', e?.message || e) }
     res.json({ success: true, expiresAt: result.expires_at });
   } catch (e) {
     res.status(500).json({ error: 'Device code polling failed', message: e.message });
@@ -241,16 +246,24 @@ router.get('/oauth/:provider/status', async (req, res) => {
     const { provider } = req.params;
     const userId = getUserId(req);
 
-    const isConfigured = secureStorage.isProviderConfigured(userId, provider, 'oauth');
-    const isExpired = secureStorage.isTokenExpired(userId, provider);
-    const metadata = secureStorage.getProviderMetadata(userId, provider, 'oauth');
-
-    res.json({
-      provider,
-      configured: isConfigured,
-      expired: isExpired,
-      metadata
-    });
+    // Use async token retrieval to ensure storage is ready
+    const tokUser = await secureStorage.getOAuthToken(userId, provider);
+    const tokDefault = await secureStorage.getOAuthToken('default', provider);
+    const tokenData = tokUser || tokDefault;
+    let isConfigured = Boolean(tokenData && tokenData.token);
+    // Fallback: consider configured if storage shows provider present (even if token decrypt failed)
+    if (!isConfigured) {
+      try {
+        isConfigured = secureStorage.isProviderConfigured(userId, provider, 'oauth') || secureStorage.isProviderConfigured('default', provider, 'oauth');
+      } catch {}
+    }
+    let isExpired = true;
+    if (tokenData && tokenData.token && tokenData.token.expires_at) {
+      isExpired = new Date(tokenData.token.expires_at) <= new Date();
+    } else if (isConfigured) {
+      isExpired = false;
+    }
+    res.json({ provider, configured: isConfigured, expired: isExpired, metadata: tokenData?.metadata || null });
   } catch (error) {
     console.error('OAuth status check error:', error);
     res.status(500).json({ error: 'Failed to check OAuth status' });
@@ -277,6 +290,15 @@ router.post('/oauth/alldebrid/check', async (req, res) => {
         expires_at: result.expires_at,
         token_type: result.token_type
       });
+      // Mirror to default scope as well for single-user mode
+      try {
+        await secureStorage.storeOAuthToken('default', 'alldebrid', {
+          access_token: result.access_token,
+          apikey: result.apikey,
+          expires_at: result.expires_at,
+          token_type: result.token_type
+        });
+      } catch (e) { console.warn('Mirror alldebrid token to default failed:', e?.message || e) }
       // Also store as API key so DebridManager can load it
       try {
         await secureStorage.storeApiKey(userId, 'alldebrid', result.apikey, { source: 'oauth_pin' });
@@ -316,4 +338,4 @@ router.post('/oauth/alldebrid/check', async (req, res) => {
   }
 });
 
-module.exports = { router, setDebridManager };
+module.exports = { router, setDebridManager, setSecureStorage };

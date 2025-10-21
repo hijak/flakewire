@@ -35,8 +35,9 @@ jobs:
         cd client && npm ci
 
     - name: Create .env file with secrets for testing
+      shell: bash
       run: |
-        cat > .env << EOF
+        cat > .env << 'EOF'
         PORT=3001
         NODE_ENV=production
         TRAKT_CLIENT_ID=${{ secrets.TRAKT_CLIENT_ID }}
@@ -95,8 +96,9 @@ jobs:
         cd client && npm ci
 
     - name: Create .env file with secrets
+      shell: bash
       run: |
-        cat > .env << EOF
+        cat > .env << 'EOF'
         PORT=3001
         NODE_ENV=production
         TRAKT_CLIENT_ID=${{ secrets.TRAKT_CLIENT_ID }}
@@ -116,7 +118,6 @@ jobs:
       run: |
         mkdir -p release
         find release-artifacts -name "*.AppImage" -type f -exec cp {} release/ \;
-        find release-artifacts -name "*.deb" -type f -exec cp {} release/ \;
         find release-artifacts -name "*.dmg" -type f -exec cp {} release/ \;
         find release-artifacts -name "*.exe" -type f -exec cp {} release/ \;
         ls -la release/

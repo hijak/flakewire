@@ -8,14 +8,13 @@ import Onboarding from "./pages/Onboarding";
 import Movies from "./pages/Movies";
 import TVShows from "./pages/TVShows";
 import Search from "./pages/Search";
-import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import Player from "./pages/Player";
-import { AuthProvider } from "./contexts/auth";
 import Settings from "./pages/Settings";
-import TraktCallback from "./pages/TraktCallback";
+// Single-user mode: no auth context or callback page
 import SetupGuard from "./components/SetupGuard";
 import TVEpisodes from "./pages/TVEpisodes";
+import Calendar from "./pages/Calendar";
 
 const queryClient = new QueryClient();
 
@@ -24,25 +23,23 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <AuthProvider>
-        <BrowserRouter>
+      <BrowserRouter>
           <Routes>
             <Route path="/onboarding" element={<Onboarding />} />
             <Route element={<SetupGuard />}>
               <Route path="/" element={<Home />} />
               <Route path="/movies" element={<Movies />} />
               <Route path="/tv-shows" element={<TVShows />} />
+              <Route path="/calendar" element={<Calendar />} />
               <Route path="/search" element={<Search />} />
               <Route path="/watch/:type/:imdbId" element={<Player />} />
               <Route path="/tv/:imdbId/episodes" element={<TVEpisodes />} />
               <Route path="/settings" element={<Settings />} />
             </Route>
-            <Route path="/auth/trakt/callback" element={<TraktCallback />} />
-            <Route path="/auth" element={<Auth />} />
+            {/* No auth routes in single-user mode */}
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </BrowserRouter>
-      </AuthProvider>
+      </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
 );

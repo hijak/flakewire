@@ -24,6 +24,7 @@ const Header = () => {
     { path: "/", label: "Home" },
     { path: "/movies", label: "Movies" },
     { path: "/tv-shows", label: "TV Shows" },
+    { path: "/calendar", label: "Calendar" },
     { path: "/search", label: "Search" },
     { path: "/settings", label: "Settings" },
   ];

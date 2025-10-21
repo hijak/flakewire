@@ -1,0 +1,32 @@
+{
+  "users": {
+    "default": {
+      "apiKeys": {
+        "omdb": {
+          "encrypted": {
+            "encrypted": "330bca8dba517a92",
+            "iv": "c6ccc5caf9249f9ba71cd2d6bad274bc",
+            "authTag": "e1f8c9d63a386278ae05324947788b87"
+          },
+          "metadata": {
+            "createdAt": "2025-10-21T10:37:34.070Z",
+            "lastUsed": "2025-10-21T10:39:17.075Z",
+            "source": "public"
+          }
+        },
+        "fanarttv": {
+          "encrypted": {
+            "encrypted": "9bb618c5680e9f814dcb30f7ccd1dd7d47a56b8a554d2d12fd670082c22f80a2",
+            "iv": "8a9d11cd85aac4cba4124177d418cbf0",
+            "authTag": "ef6c30791208aa9d3d4b808773ac65e2"
+          },
+          "metadata": {
+            "createdAt": "2025-10-21T10:37:45.095Z",
+            "lastUsed": "2025-10-21T10:39:17.078Z",
+            "source": "public"
+          }
+        }
+      }
+    }
+  }
+}

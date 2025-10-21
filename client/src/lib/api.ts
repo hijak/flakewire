@@ -1,15 +1,12 @@
 export type MediaItem = { id: string; imdbId?: string | null; title: string; year?: number | string | null; type: 'movie'|'tv'; poster?: string; rating?: number | string | null }
 
-const authHeader = () => {
-  const t = localStorage.getItem('token')
-  return t ? { Authorization: `Bearer ${t}` } : {}
-}
+// Single-user mode: no Authorization headers needed; server uses default scope
 
 export async function getHomeFeed(refresh: boolean = false): Promise<{ movies: MediaItem[]; tvShows: MediaItem[]; source: string }>
 {
   const u = new URL('/api/home', window.location.origin)
   if (refresh) u.searchParams.set('refresh', 'true')
-  const r = await fetch(u.toString(), { headers: { ...authHeader() } })
+  const r = await fetch(u.toString())
   if (!r.ok) throw new Error('Failed to load home feed')
   return r.json()
 }
@@ -57,7 +54,7 @@ export async function getSources(type: 'movie'|'tv', imdbId: string, season?: nu
 }
 
 export async function resolveLink(link: string) {
-  const r = await fetch('/api/debrid/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeader() }, body: JSON.stringify({ link }) })
+  const r = await fetch('/api/debrid/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ link }) })
   if (!r.ok) throw new Error('Failed to resolve link')
   return r.json() as Promise<ResolveResponse>
 }
@@ -106,7 +103,7 @@ export type NotificationItem = {
 export async function getNotifications(refresh: boolean = false) {
   const u = new URL('/api/notifications', window.location.origin)
   if (refresh) u.searchParams.set('refresh', 'true')
-  const r = await fetch(u.toString(), { headers: { ...authHeader() } })
+  const r = await fetch(u.toString())
   if (!r.ok) throw new Error('Failed to load notifications')
   return r.json() as Promise<{ notifications: NotificationItem[]; source?: string; timestamp: string }>
 }
@@ -114,7 +111,7 @@ export async function getNotifications(refresh: boolean = false) {
 export async function getMoviesFeed(refresh: boolean = false) {
   const u = new URL('/api/movies/feed', window.location.origin)
   if (refresh) u.searchParams.set('refresh', 'true')
-  const r = await fetch(u.toString(), { headers: { ...authHeader() } })
+  const r = await fetch(u.toString())
   if (!r.ok) throw new Error('Failed to load movies feed')
   return r.json() as Promise<{ collection: MediaItem[]; watchlist: MediaItem[]; recent?: MediaItem[]; lists?: { name: string; id: string; items: MediaItem[] }[] }>
 }
@@ -122,7 +119,7 @@ export async function getMoviesFeed(refresh: boolean = false) {
 export async function getTVFeed(refresh: boolean = false) {
   const u = new URL('/api/tv/feed', window.location.origin)
   if (refresh) u.searchParams.set('refresh', 'true')
-  const r = await fetch(u.toString(), { headers: { ...authHeader() } })
+  const r = await fetch(u.toString())
   if (!r.ok) throw new Error('Failed to load tv feed')
   return r.json() as Promise<{ collection: MediaItem[]; watchlist: MediaItem[]; recent?: MediaItem[]; lists?: { name: string; id: string; items: MediaItem[] }[] }>
 }

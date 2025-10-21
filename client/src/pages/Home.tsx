@@ -17,23 +17,6 @@ const Home = () => {
   const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
-    // Onboarding guard
-    (async () => {
-      try {
-        const [t, a] = await Promise.all([
-          fetch('/api/auth/oauth/trakt/status'),
-          fetch('/api/auth/oauth/alldebrid/status')
-        ])
-        const ts = t.ok ? await t.json() : { configured:false }
-        const as = a.ok ? await a.json() : { configured:false }
-        const om = await fetch('/api/public/api-keys/omdb')
-        const fa = await fetch('/api/public/api-keys/fanarttv')
-        if (!(ts.configured && as.configured && om.ok && fa.ok)) {
-          navigate('/onboarding')
-          return
-        }
-      } catch {}
-    })()
     const refresh = new URLSearchParams(window.location.search).get('refresh') === '1'
     getHomeFeed(refresh)
       .then(async (d) => {
