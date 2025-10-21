@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import Header from '@/components/Header'
+import { Link } from 'react-router-dom'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -21,6 +21,7 @@ const Onboarding = () => {
   const [fanartKey, setFanartKey] = useState('')
   const [tDevice, setTDevice] = useState<{ device_code:string; user_code:string; verification_url:string; expires_in:number; interval:number }|null>(null)
   const [tPolling, setTPolling] = useState(false)
+  const [tError, setTError] = useState<string | null>(null)
   const [pinData, setPinData] = useState<{ pin: string; check: string; user_url: string } | null>(null)
   const [pinStatus, setPinStatus] = useState<'idle'|'waiting'|'activated'|'error'>('idle')
 
@@ -38,10 +39,18 @@ const Onboarding = () => {
   useEffect(() => { load() }, [])
 
   const startTrakt = async () => {
+    setTError(null)
     try {
       const r = await fetch('/api/auth/oauth/trakt/device/start', { method:'POST' })
       const data = await r.json()
-      if (!r.ok) throw new Error(data.error || 'Failed to start device auth')
+      if (!r.ok) {
+        if (data.error?.includes('Trakt client not configured')) {
+          setTError('Trakt is not configured on the server. Please contact the administrator.')
+        } else {
+          setTError(data.error || 'Failed to start device auth')
+        }
+        return
+      }
       setTDevice(data); setTPolling(true)
       try { await navigator.clipboard.writeText(data.user_code) } catch {}
       window.open(`${data.verification_url}?code=${encodeURIComponent(data.user_code)}`, '_blank')
@@ -52,11 +61,13 @@ const Onboarding = () => {
         try {
           const p = await fetch('/api/auth/oauth/trakt/device/poll', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ device_code: data.device_code }) })
           const j = await p.json()
-          if (j && j.success) { clearInterval(iv); setTPolling(false); setTDevice(null); await load() }
+          if (j && j.success) { clearInterval(iv); setTPolling(false); setTDevice(null); setTError(null); await load() }
         } catch {}
-        if (attempts > maxAttempts) { clearInterval(iv); setTPolling(false) }
+        if (attempts > maxAttempts) { clearInterval(iv); setTPolling(false); setTError('Authorization timed out. Please try again.') }
       }, (data.interval || 5) * 1000)
-    } catch {}
+    } catch (error) {
+      setTError('Failed to connect to Trakt. Please try again.')
+    }
   }
 
   const connectAllDebrid = async () => {
@@ -96,7 +107,19 @@ const Onboarding = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      {/* Simple logo-only header for onboarding */}
+      <div className="sticky top-0 z-50 glass border-b border-border/50">
+        <div className="container mx-auto px-4">
+          <div className="flex items-center h-16">
+            <Link to="/" className="flex items-center gap-3 hover-scale">
+              <img src={'/logo.png'} alt="Flake Wire" className="h-8 w-8" style={{ backgroundColor: 'transparent' }} />
+              <span className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
+                Flake Wire
+              </span>
+            </Link>
+          </div>
+        </div>
+      </div>
       <div className="container mx-auto px-4 py-10 max-w-3xl space-y-6">
         <Card className="p-6 glass">
           <h1 className="text-xl font-semibold mb-2">Welcome to Flake Wire</h1>
@@ -109,7 +132,15 @@ const Onboarding = () => {
             <div className="text-green-500">Connected</div>
           ) : (
             <div className="space-y-2">
-              <Button onClick={startTrakt}>Connect Trakt</Button>
+              <Button onClick={startTrakt} disabled={tPolling}>Connect Trakt</Button>
+              {tError && (
+                <Alert>
+                  <AlertTitle>Connection Error</AlertTitle>
+                  <AlertDescription className="text-destructive">
+                    {tError}
+                  </AlertDescription>
+                </Alert>
+              )}
               {tDevice && (
                 <Alert>
                   <AlertTitle>Authorize Trakt</AlertTitle>
