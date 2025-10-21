@@ -95,7 +95,8 @@ const Home = () => {
         <MediaRow
           title="TV Shows"
           items={shows.map(s => ({ id: s.imdbId || String(s.id), title: s.title, year: String(s.year || ''), rating: typeof s.rating === 'string' ? Number(s.rating) : (s.rating as any), image: s.poster || '', genre: '' }))}
-          onPlay={(id) => navigate(`/watch/tv/${id}`)}
+          playLabel="Episodes"
+          onPlay={(id) => navigate(`/tv/${id}/episodes`)}
         />
       </div>
     </div>
