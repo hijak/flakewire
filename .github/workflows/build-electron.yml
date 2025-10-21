@@ -37,13 +37,11 @@ jobs:
     - name: Create .env file with secrets for testing
       shell: bash
       run: |
-        cat > .env << 'EOF'
+        cat > .env << EOF
         PORT=3001
         NODE_ENV=production
         TRAKT_CLIENT_ID=${{ secrets.TRAKT_CLIENT_ID }}
         TRAKT_CLIENT_SECRET=${{ secrets.TRAKT_CLIENT_SECRET }}
-        ORIONOID_API_KEY=${{ secrets.ORIONOID_API_KEY }}
-        TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
         EOF
 
     - name: Install system dependencies (Ubuntu)
@@ -98,13 +96,11 @@ jobs:
     - name: Create .env file with secrets
       shell: bash
       run: |
-        cat > .env << 'EOF'
+        cat > .env << EOF
         PORT=3001
         NODE_ENV=production
         TRAKT_CLIENT_ID=${{ secrets.TRAKT_CLIENT_ID }}
         TRAKT_CLIENT_SECRET=${{ secrets.TRAKT_CLIENT_SECRET }}
-        ORIONOID_API_KEY=${{ secrets.ORIONOID_API_KEY }}
-        TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
         EOF
 
     # Build step removed - we'll use artifacts from matrix builds

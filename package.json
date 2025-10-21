@@ -58,6 +58,7 @@
       "electron/**",
       "assets/**",
       "logo.png",
+      ".env",
       "package.json",
       "node_modules/**"
     ],
@@ -72,7 +73,7 @@
           "arch": ["x64", "arm64"]
         }
       ],
-      "icon": "assets/icon.iconset/icon_512x512.png"
+      "icon": "logo.png"
     },
     "win": {
       "target": [
@@ -81,7 +82,7 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "logo.png"
     },
     "linux": {
       "target": [
@@ -96,7 +97,7 @@
       ],
       "category": "AudioVideo",
       "maintainer": "Flake Wire Team <support@flakewire.app>",
-      "icon": "assets/icon.png"
+      "icon": "logo.png"
     },
     "nsis": {
       "oneClick": false,

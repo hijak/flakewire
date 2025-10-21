@@ -6,7 +6,16 @@ const fs = require('fs');
 const jwt = require('jsonwebtoken');
 
 // Load environment variables
-dotenv.config();
+// In Electron, __dirname might be inside ASAR, so try multiple paths
+const envPath = path.join(__dirname, '..', '.env');
+const envPathAlt = path.join(process.cwd(), '.env');
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+} else if (fs.existsSync(envPathAlt)) {
+  dotenv.config({ path: envPathAlt });
+} else {
+  dotenv.config(); // fallback to default behavior
+}
 
 // Import services
 const DebridManager = require('./debrid/debridManager');
